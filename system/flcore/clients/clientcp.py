@@ -9,6 +9,7 @@ from sklearn import metrics
 from utils.data_utils import read_client_data
 
 
+
 class clientCP:
     def __init__(self, args, id, train_samples, test_samples, **kwargs):
         self.model = copy.deepcopy(args.model)
@@ -32,9 +33,9 @@ class clientCP:
         self.context = torch.rand(1, in_dim).to(self.device)
 
         self.model = Ensemble(
-            model=self.model, 
-            cs=copy.deepcopy(kwargs['ConditionalSelection']), 
-            head_g=copy.deepcopy(self.model.head), 
+            model=self.model,
+            cs=copy.deepcopy(kwargs['ConditionalSelection']),
+            head_g=copy.deepcopy(self.model.head),
             feature_extractor=copy.deepcopy(self.model.feature_extractor)
         )
         self.opt= torch.optim.SGD(self.model.parameters(), lr=self.learning_rate)
@@ -53,11 +54,11 @@ class clientCP:
             batch_size = self.batch_size
         test_data = read_client_data(self.dataset, self.id, is_train=False)
         return DataLoader(test_data, batch_size, drop_last=True, shuffle=False)
-            
+
     def set_parameters(self, feature_extractor):
         for new_param, old_param in zip(feature_extractor.parameters(), self.model.model.feature_extractor.parameters()):
             old_param.data = new_param.data.clone()
-            
+
         for new_param, old_param in zip(feature_extractor.parameters(), self.model.feature_extractor.parameters()):
             old_param.data = new_param.data.clone()
 
@@ -72,7 +73,7 @@ class clientCP:
             headw_p = torch.matmul(headw_p, mat)
         headw_p.detach_()
         self.context = torch.sum(headw_p, dim=0, keepdim=True)
-        
+
         for new_param, old_param in zip(head.parameters(), self.model.head_g.parameters()):
             old_param.data = new_param.data.clone()
 
@@ -101,7 +102,7 @@ class clientCP:
         self.model.gate.pm_ = []
         self.model.gate.gm_ = []
         self.pm_test = []
-        
+
         with torch.no_grad():
             for x, y in testloader:
                 if type(x) == type([]):
@@ -129,14 +130,14 @@ class clientCP:
         auc = metrics.roc_auc_score(y_true, y_prob, average='micro')
 
         self.pm_test.extend(self.model.gate.pm_)
-        
+
         return test_acc, test_num, auc
 
-                
+
     def train_cs_model(self):
         trainloader = self.load_train_data()
         self.model.train()
-        
+
         for _ in range(self.local_steps):
             self.model.gate.pm = []
             self.model.gate.gm = []
@@ -171,31 +172,31 @@ def MMD(x, y, kernel, device='cpu'):
     xx, yy, zz = torch.mm(x, x.t()), torch.mm(y, y.t()), torch.mm(x, y.t())
     rx = (xx.diag().unsqueeze(0).expand_as(xx))
     ry = (yy.diag().unsqueeze(0).expand_as(yy))
-    
+
     dxx = rx.t() + rx - 2. * xx # Used for A in (1)
     dyy = ry.t() + ry - 2. * yy # Used for B in (1)
     dxy = rx.t() + ry - 2. * zz # Used for C in (1)
-    
+
     XX, YY, XY = (torch.zeros(xx.shape).to(device),
                   torch.zeros(xx.shape).to(device),
                   torch.zeros(xx.shape).to(device))
-    
+
     if kernel == "multiscale":
-        
+
         bandwidth_range = [0.2, 0.5, 0.9, 1.3]
         for a in bandwidth_range:
             XX += a**2 * (a**2 + dxx)**-1
             YY += a**2 * (a**2 + dyy)**-1
             XY += a**2 * (a**2 + dxy)**-1
-            
+
     if kernel == "rbf":
-      
+
         bandwidth_range = [10, 15, 20, 50]
         for a in bandwidth_range:
             XX += torch.exp(-0.5*dxx/a)
             YY += torch.exp(-0.5*dyy/a)
             XY += torch.exp(-0.5*dxy/a)
-      
+
     return torch.mean(XX + YY - 2. * XY)
 
 
@@ -206,7 +207,7 @@ class Ensemble(nn.Module):
         self.model = model
         self.head_g = head_g
         self.feature_extractor = feature_extractor
-        
+
         for param in self.head_g.parameters():
             param.requires_grad = False
         for param in self.feature_extractor.parameters():
@@ -248,7 +249,7 @@ class Ensemble(nn.Module):
             return output, rep, self.feature_extractor(x)
         else:
             return output
-        
+
 
 class Gate(nn.Module):
     def __init__(self, cs) -> None:
