@@ -7,7 +7,7 @@ from torch.utils.data import DataLoader
 from sklearn.preprocessing import label_binarize
 from sklearn import metrics
 from utils.data_utils import read_client_data
-
+from utils.model_utils import add_noise_to_gradients
 
 
 class clientCP:
@@ -33,12 +33,13 @@ class clientCP:
         self.context = torch.rand(1, in_dim).to(self.device)
 
         self.model = Ensemble(
-            model=self.model,
+            model=self.model,  # model is the global model
             cs=copy.deepcopy(kwargs['ConditionalSelection']),
-            head_g=copy.deepcopy(self.model.head),
+            head_g=copy.deepcopy(self.model.head),  # head is the global head
             feature_extractor=copy.deepcopy(self.model.feature_extractor)
+            # feature_extractor is the global feature_extractor
         )
-        self.opt= torch.optim.SGD(self.model.parameters(), lr=self.learning_rate)
+        self.opt = torch.optim.SGD(self.model.parameters(), lr=self.learning_rate)
 
         self.pm_train = []
         self.pm_test = []
@@ -56,13 +57,14 @@ class clientCP:
         return DataLoader(test_data, batch_size, drop_last=True, shuffle=False)
 
     def set_parameters(self, feature_extractor):
-        for new_param, old_param in zip(feature_extractor.parameters(), self.model.model.feature_extractor.parameters()):
+        for new_param, old_param in zip(feature_extractor.parameters(),
+                                        self.model.model.feature_extractor.parameters()):
             old_param.data = new_param.data.clone()
 
         for new_param, old_param in zip(feature_extractor.parameters(), self.model.feature_extractor.parameters()):
             old_param.data = new_param.data.clone()
 
-
+    # set the head of the global model to the local model
     def set_head_g(self, head):
         headw_ps = []
         for name, mat in self.model.model.head.named_parameters():
@@ -133,11 +135,9 @@ class clientCP:
 
         return test_acc, test_num, auc
 
-
     def train_cs_model(self):
         trainloader = self.load_train_data()
         self.model.train()
-
         for _ in range(self.local_steps):
             self.model.gate.pm = []
             self.model.gate.gm = []
@@ -173,9 +173,9 @@ def MMD(x, y, kernel, device='cpu'):
     rx = (xx.diag().unsqueeze(0).expand_as(xx))
     ry = (yy.diag().unsqueeze(0).expand_as(yy))
 
-    dxx = rx.t() + rx - 2. * xx # Used for A in (1)
-    dyy = ry.t() + ry - 2. * yy # Used for B in (1)
-    dxy = rx.t() + ry - 2. * zz # Used for C in (1)
+    dxx = rx.t() + rx - 2. * xx  # Used for A in (1)
+    dyy = ry.t() + ry - 2. * yy  # Used for B in (1)
+    dxy = rx.t() + ry - 2. * zz  # Used for C in (1)
 
     XX, YY, XY = (torch.zeros(xx.shape).to(device),
                   torch.zeros(xx.shape).to(device),
@@ -185,17 +185,17 @@ def MMD(x, y, kernel, device='cpu'):
 
         bandwidth_range = [0.2, 0.5, 0.9, 1.3]
         for a in bandwidth_range:
-            XX += a**2 * (a**2 + dxx)**-1
-            YY += a**2 * (a**2 + dyy)**-1
-            XY += a**2 * (a**2 + dxy)**-1
+            XX += a ** 2 * (a ** 2 + dxx) ** -1
+            YY += a ** 2 * (a ** 2 + dyy) ** -1
+            XY += a ** 2 * (a ** 2 + dxy) ** -1
 
     if kernel == "rbf":
 
         bandwidth_range = [10, 15, 20, 50]
         for a in bandwidth_range:
-            XX += torch.exp(-0.5*dxx/a)
-            YY += torch.exp(-0.5*dyy/a)
-            XY += torch.exp(-0.5*dxy/a)
+            XX += torch.exp(-0.5 * dxx / a)
+            YY += torch.exp(-0.5 * dyy / a)
+            XY += torch.exp(-0.5 * dxy / a)
 
     return torch.mean(XX + YY - 2. * XY)
 
@@ -205,7 +205,7 @@ class Ensemble(nn.Module):
         super().__init__()
 
         self.model = model
-        self.head_g = head_g
+        self.head_g = head_g  # head_g is the global head
         self.feature_extractor = feature_extractor
 
         for param in self.head_g.parameters():
@@ -221,8 +221,7 @@ class Ensemble(nn.Module):
         self.gate = Gate(cs)
 
     def forward(self, x, is_rep=False, context=None):
-        rep = self.model.feature_extractor(x)
-
+        rep = self.model.feature_extractor(x)  # feature_extractor is the global feature_extractor
         gate_in = rep
 
         if context != None:
@@ -234,7 +233,6 @@ class Ensemble(nn.Module):
 
         if self.context != None:
             gate_in = rep * self.context
-
         if self.flag == 0:
             rep_p, rep_g = self.gate(rep, self.tau, self.hard, gate_in, self.flag)
             output = self.model.head(rep_p) + self.head_g(rep_g)

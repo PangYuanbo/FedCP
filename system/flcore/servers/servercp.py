@@ -33,6 +33,7 @@ class FedCP:
 
         in_dim = list(args.model.head.parameters())[0].shape[1]
         cs = ConditionalSelection(in_dim, in_dim).to(args.device)
+        print(f"Conditional Selection: {cs}")
 
         for i in range(self.num_clients):
             train_data = read_client_data(self.dataset, i, is_train=True)
