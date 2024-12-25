@@ -7,7 +7,7 @@ from torch.utils.data import DataLoader
 from sklearn.preprocessing import label_binarize
 from sklearn import metrics
 from utils.data_utils import read_client_data
-from utils.model_utils import add_noise_to_gradients
+from utils.model_utils import clip_and_add_noise_with_privacy
 
 
 class clientCP:
@@ -16,7 +16,7 @@ class clientCP:
         self.dataset = args.dataset
         self.device = args.device
         self.id = id
-
+        self.dp=args.difference_privacy
         self.num_classes = args.num_classes
         self.train_samples = train_samples
         self.test_samples = test_samples
@@ -91,7 +91,7 @@ class clientCP:
 
     def generate_upload_head(self):
         for (np, pp), (ng, pg) in zip(self.model.model.head.named_parameters(), self.model.head_g.named_parameters()):
-            pg.data = pp * 0.5 + pg * 0.5
+            pg.data = pp*0.5+pg*0.5
 
     def test_metrics(self):
         testloader = self.load_test_data()
@@ -135,7 +135,11 @@ class clientCP:
 
         return test_acc, test_num, auc
 
-    def train_cs_model(self):
+    def train_cs_model(self,round):
+        initial_params = {name: param.clone().detach() for name, param in self.model.model.head.named_parameters()}
+        # print("Model Layers:")
+        # for name, module in self.model.named_modules():
+        #     print(f"Layer Name: {name}, Layer Type: {type(module)}")
         trainloader = self.load_train_data()
         self.model.train()
         for _ in range(self.local_steps):
@@ -154,7 +158,32 @@ class clientCP:
                 self.opt.zero_grad()
                 loss.backward()
                 self.opt.step()
+        # 在本地全部轮次完成后，计算目标层的差值并进行裁剪和噪声添加
+        clip_value =5 # 梯度裁剪阈值
+        epsilon = 5 # 隐私预算
+        delta = 1e-5  # 隐私泄露概率
+        if self.dp and round > 100:
+            # 计算目标层的参数更新量
+            param_diff = {}
+            for name, param in self.model.model.head.named_parameters():
+                param_diff[name] = (param - initial_params[name]).detach()
 
+            # 对差值进行裁剪和噪声添加
+            for name, diff in param_diff.items():
+                norm = torch.norm(diff)
+                if norm > clip_value:
+                    diff = diff / norm * clip_value
+                noise = torch.normal(
+                    mean=0,
+                    std=(clip_value / epsilon) * torch.sqrt(torch.tensor(2.0) * torch.log(torch.tensor(1.25 / delta))),
+
+                    size=diff.shape
+                ).to(diff.device)
+                param_diff[name] += noise
+
+            # 更新模型的目标层参数
+            for name, param in self.model.model.head.named_parameters():
+                param.data = initial_params[name] + param_diff[name]
         self.pm_train.extend(self.model.gate.pm)
         scores = [torch.mean(pm).item() for pm in self.pm_train]
         print(np.mean(scores), np.std(scores))

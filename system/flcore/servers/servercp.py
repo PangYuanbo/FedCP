@@ -1,6 +1,8 @@
 import copy
 import numpy as np
 import torch
+import re
+import os
 import time
 from flcore.clients.clientcp import *
 from utils.data_utils import read_client_data
@@ -113,7 +115,12 @@ class FedCP:
         print("Averaged Test AUC: {:.4f}".format(test_auc))
 
 
-    def train(self):
+    def train(self,args):
+        total_start = time.time()
+        result_dir = "results"
+        os.makedirs(result_dir, exist_ok=True)
+        filename = f"results_{args.dataset}_{args.global_rounds}_{args.local_learning_rate:.4f}.txt"
+        file_path = os.path.join(result_dir, filename)
         for i in range(self.global_rounds+1):
             s_t = time.time()
             self.selected_clients = self.select_clients()
@@ -123,8 +130,11 @@ class FedCP:
                 print("\nEvaluate before local training")
                 self.evaluate()
 
+                with open(file_path, "a") as f:
+                    f.write(f"Round {i}: ACC = {self.rs_test_acc[-1]:.4f}\n")
+
             for client in self.selected_clients:
-                client.train_cs_model()
+                client.train_cs_model(i)
                 client.generate_upload_head()
 
             self.receive_models()

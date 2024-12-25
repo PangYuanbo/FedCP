@@ -60,7 +60,7 @@ def run(args):
         else:
             raise NotImplementedError
             
-        server.train()
+        server.train(args)
         
         # torch.cuda.empty_cache()
 
@@ -74,10 +74,12 @@ def run(args):
 
 
 if __name__ == "__main__":
+    import torch
     total_start = time.time()
 
     parser = argparse.ArgumentParser()
     # general
+    parser.add_argument('-dp','--difference_privacy', type=bool, default=False)
     parser.add_argument('-dev', "--device", type=str, default="cuda",
                         choices=["cpu", "cuda"])
     parser.add_argument('-did', "--device_id", type=str, default="0")
@@ -106,12 +108,23 @@ if __name__ == "__main__":
     parser.add_argument('-lam', "--lamda", type=float, default=0.0)
 
     args = parser.parse_args()
-
+    print(args.device_id)
     os.environ["CUDA_VISIBLE_DEVICES"] = args.device_id
-    # torch.cuda.set_device(int(args.device_id))
 
+
+    # 检查 CUDA 是否可用
+    if torch.cuda.is_available():
+        print("CUDA 可用")
+        print(f"可用的 GPU 数量: {torch.cuda.device_count()}")
+        print(f"当前 GPU 设备: {torch.cuda.get_device_name(torch.cuda.current_device())}")
+        print(f"CUDA 版本: {torch.version.cuda}")
+    else:
+        print("CUDA 不可用")
+
+    # torch.cuda.set_device(int(args.device_id))
+    device = torch.device("cuda:0")
     if args.device == "cuda" and not torch.cuda.is_available():
         print("\ncuda is not avaiable.\n")
-        args.device = "cpu"
+        args.device = "cuda"
 
     run(args)
