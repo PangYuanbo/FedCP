@@ -128,3 +128,5 @@ dmypy.json
 # Pyre type checker
 .pyre/
 /.idea/
+/dataset/tiny-imagenet-200/
+/dataset/
