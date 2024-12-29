@@ -45,6 +45,16 @@ class FedCP:
                             train_samples=len(train_data), 
                             test_samples=len(test_data), 
                             ConditionalSelection=cs)
+            if args.pretrain:
+                save_dir = "model_pretrain"
+                file_name = f"{i}_{self.dataset}_100round.pth"
+                model_path = os.path.join(save_dir, file_name)
+                if os.path.exists(model_path):
+                    client.model.load_state_dict(torch.load(model_path))
+                    print(f"Pretrained model loaded for client {i} from {model_path}")
+                else:
+                    print(f"Pretrained model file not found for client {i} at {model_path}")
+
             self.clients.append(client)
 
         print(f"\nJoin ratio / total clients: {self.join_ratio} / {self.num_clients}")
@@ -122,6 +132,9 @@ class FedCP:
         filename = f"results_{args.dataset}_{args.global_rounds}_{args.local_learning_rate:.4f}.txt"
         file_path = os.path.join(result_dir, filename)
         for i in range(self.global_rounds+1):
+            if args.pretrain and i < 100:
+                print(f"Skipping round {i} due to pretraining mode.")
+                continue
             s_t = time.time()
             self.selected_clients = self.select_clients()
 
@@ -134,7 +147,7 @@ class FedCP:
                     f.write(f"Round {i}: ACC = {self.rs_test_acc[-1]:.4f}\n")
 
             for client in self.selected_clients:
-                client.train_cs_model(i)
+                client.train_cs_model(i,args)
                 client.generate_upload_head()
 
             self.receive_models()

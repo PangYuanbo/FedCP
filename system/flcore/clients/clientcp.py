@@ -2,6 +2,7 @@ import copy
 import torch
 import torch.nn as nn
 import numpy as np
+import os
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
 from sklearn.preprocessing import label_binarize
@@ -135,7 +136,7 @@ class clientCP:
 
         return test_acc, test_num, auc
 
-    def train_cs_model(self,round):
+    def train_cs_model(self,round,args):
         initial_params = {name: param.clone().detach() for name, param in self.model.model.head.named_parameters()}
         # print("Model Layers:")
         # for name, module in self.model.named_modules():
@@ -157,16 +158,30 @@ class clientCP:
                 loss += MMD(rep, rep_base, 'rbf', self.device) * self.lamda
                 self.opt.zero_grad()
                 loss.backward()
+                # grad_norm = 0.0
+                # for param in self.model.model.head.parameters():
+                #     if param.grad is not None:
+                #         grad_norm += param.grad.data.norm(2).item() ** 2
+                # grad_norm = grad_norm ** 0.5  # 开根号得到 L2 范数
+                # print(f"[Epoch step {i}] Gradient norm of self.model.model.head: {grad_norm:.4f}")
                 self.opt.step()
         # 在本地全部轮次完成后，计算目标层的差值并进行裁剪和噪声添加
-        clip_value =5 # 梯度裁剪阈值
+        clip_value =0.02# 梯度裁剪阈值
         epsilon = 5 # 隐私预算
         delta = 1e-5  # 隐私泄露概率
-        if self.dp and round > 100:
+        # if round == 100:
+        #     save_dir = "model_pretrain"
+        #     os.makedirs(save_dir, exist_ok=True)
+        #     file_name = f"{self.id}_{dataset}_100round.pth"
+        #     torch.save(self.model.state_dict(), file_name)
+
+        if self.dp :
             # 计算目标层的参数更新量
             param_diff = {}
             for name, param in self.model.model.head.named_parameters():
                 param_diff[name] = (param - initial_params[name]).detach()
+                diff_norm = param_diff[name].norm(p=2).item()
+                # print(f"ClientID: {self.id}, Layer Name: {name}, Diff Norm: {diff_norm:.4f}")
 
             # 对差值进行裁剪和噪声添加
             for name, diff in param_diff.items():
