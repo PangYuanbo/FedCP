@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 
-
+from torchvision import models
 batch_size = 16
 
 class LocalModel(nn.Module):
@@ -100,3 +100,32 @@ class fastText(nn.Module):
         out = z
 
         return out
+
+class FedAvgResNet18(nn.Module):
+    """
+    与 FedAvgCNN 类似的写法，使用 ResNet18 作为主干网络。
+    这里 in_features 表示输入通道数，如 3 表示 RGB 彩色图像。
+    """
+    def __init__(self, in_features=3, num_classes=200, dim=1600):
+        super(FedAvgResNet18, self).__init__()
+
+        # 1. 加载 torchvision 中的 resnet18 (无预训练)
+        self.model = models.resnet18(pretrained=False)
+
+        # 2. 若 in_features != 3，则需要替换第一层的卷积核
+        #    TinyImageNet 通常是 RGB, 所以 in_features=3，若你需要灰度图 (1 通道)，就需替换
+        if in_features != 3:
+            self.model.conv1 = nn.Conv2d(
+                in_features, 64, kernel_size=7, stride=2, padding=3, bias=False
+            )
+
+        # 3. 替换最后一层，全连接层输出改为 num_classes（TinyImageNet 默认 200 类）
+        self.model.fc = nn.Linear(self.model.fc.in_features, num_classes)
+
+        # 如果你希望用到 dim 参数做额外处理（比如 Flatten 后特征维度 = 1600），可在此添加自定义层。
+        # 这里先不额外用 dim，仅保留原版 ResNet18 结构
+        # 例如:
+        # self.linear_out = nn.Linear(dim, num_classes)  # 你可以酌情添加
+
+    def forward(self, x):
+        return self.model(x)

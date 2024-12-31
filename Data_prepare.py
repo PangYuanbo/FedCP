@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 import requests
 import zipfile
 from tqdm import tqdm
+from PIL import Image  # 新增：用于读取图片像素
 
 # 设置德拉克雷分布的 alpha 值和客户端数量
 alpha = 0.05
@@ -94,15 +95,55 @@ def split_data_by_dirichlet(data, labels, num_clients, alpha):
             client_data[client_id]['labels'].extend(labels[idx[start_idx:start_idx + proportion]])
             start_idx += proportion
 
+    # 检查每个客户端是否包含多个类别
+    for client_id, content in client_data.items():
+        unique_labels = np.unique(content['labels'])
+        if len(unique_labels) < 2:
+            print(f"Warning: Client {client_id} has only one class: {unique_labels}. Adding extra data.")
+            # 添加额外的样本，使其至少包含两个类别
+            extra_idx = np.random.choice(len(labels), size=10, replace=False)  # 随机选 10 个样本
+            client_data[client_id]['data'].extend(data[extra_idx])
+            client_data[client_id]['labels'].extend(labels[extra_idx])
+
     return client_data
 
-
-# 保存客户端数据
-def save_client_data(client_data, output_dir, prefix):
-    os.makedirs(output_dir, exist_ok=True)
+# 打印每个客户端的类别数量
+def print_client_class_distribution(client_data, split_name):
+    print(f"\n===== {split_name} Client Class Distribution =====")
     for client_id, content in client_data.items():
-        client_path = os.path.join(output_dir, f"{prefix}_{client_id + 1}.npz")
-        np.savez(client_path, data=np.array(content['data']), labels=np.array(content['labels']))
+        unique_classes = np.unique(content['labels'])
+        print(f"Client {client_id}: {len(unique_classes)} unique classes")
+
+
+# =============== 修改处：保存客户端数据时，把图像像素拷贝进来 ================
+def save_client_data(client_data, output_dir, prefix):
+    """
+    保存客户端数据时调整通道顺序为 [C, H, W].
+    """
+    os.makedirs(output_dir, exist_ok=True)
+
+    for client_id, content in client_data.items():
+        # 保存转换后的图像数组
+        X = []
+        for image_path in content['data']:
+            # 读取图像并转为 (H, W, 3) 的 RGB array
+            img = Image.open(image_path).convert('RGB')
+            img_array = np.array(img, dtype=np.uint8)  # shape: (64, 64, 3)
+
+            # 调整通道顺序 (H, W, C) -> (C, H, W)
+            img_array = np.transpose(img_array, (2, 0, 1))  # shape: (3, 64, 64)
+            X.append(img_array)
+
+        # 转成 numpy 数组 (N, 3, 64, 64)
+        X = np.array(X)
+
+        # 标签直接转 numpy
+        Y = np.array(content['labels'])
+
+        # 保存到 .npz
+        client_path = os.path.join(output_dir, f"{prefix}{client_id}_.npz")
+        np.savez(client_path, data={'x': X, 'y': Y})
+
 
 
 # 绘制气泡图
@@ -145,9 +186,23 @@ train_data, train_labels, val_data, val_labels = load_tiny_imagenet(data_dir)
 train_client_data = split_data_by_dirichlet(train_data, train_labels, num_clients, alpha)
 val_client_data = split_data_by_dirichlet(val_data, val_labels, num_clients, alpha)
 
-# 保存训练和测试数据
+# 打印训练集每个客户端的类别数量
+print_client_class_distribution(train_client_data, split_name="Train")
+
+# 打印验证集每个客户端的类别数量
+print_client_class_distribution(val_client_data, split_name="Validation")
+
+print("===== Train Set Distribution =====")
+for client_id, content in train_client_data.items():
+    print(f"Client {client_id}: {len(content['data'])} images")
+
+print("\n===== Validation Set Distribution =====")
+for client_id, content in val_client_data.items():
+    print(f"Client {client_id}: {len(content['data'])} images")
+
+# 保存训练和测试数据（此时已经把图像像素打包进 .npz）
 save_client_data(train_client_data, output_partition_dir, prefix='train')
-save_client_data(val_client_data, output_partition_dir, prefix='val')
+save_client_data(val_client_data, output_partition_dir, prefix='test')
 
 # 绘制气泡图
 plot_bubble_distribution(train_client_data, num_classes=200, title=r"Train Set Distribution ($\beta = 0.5$)")

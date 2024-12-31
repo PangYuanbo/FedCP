@@ -96,6 +96,8 @@ class clientCP:
 
     def test_metrics(self):
         testloader = self.load_test_data()
+        for x, y in testloader:
+            print(f"Labels in batch: {np.unique(y.cpu().numpy())}")
         self.model.eval()
 
         test_acc = 0

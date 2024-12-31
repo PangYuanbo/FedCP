@@ -38,6 +38,8 @@ def run(args):
                 args.model = FedAvgCNN(in_features=1, num_classes=args.num_classes, dim=1024).to(args.device)
             elif args.dataset[:5] == "Cifar":
                 args.model = FedAvgCNN(in_features=3, num_classes=args.num_classes, dim=1600).to(args.device)
+            elif args.dataset[:13] =="tiny-imagenet":
+                args.model ==FedAvgResNet18(in_features=3, num_classes=args.num_classes, dim=1600).to(args.device)
             else:
                 args.model = FedAvgCNN(in_features=3, num_classes=args.num_classes, dim=10816).to(args.device)
 
@@ -119,13 +121,27 @@ if __name__ == "__main__":
         print(f"可用的 GPU 数量: {torch.cuda.device_count()}")
         print(f"当前 GPU 设备: {torch.cuda.get_device_name(torch.cuda.current_device())}")
         print(f"CUDA 版本: {torch.version.cuda}")
+        # 如果你想指定哪块GPU, 比如使用 args.device_id:
+        # device = torch.device(f"cuda:{args.device_id}")
+        device = torch.device("cuda:0")  # 默认为 0 号 GPU
     else:
         print("CUDA 不可用")
+        device = torch.device("cpu")
 
-    # torch.cuda.set_device(int(args.device_id))
-    device = torch.device("cuda:0")
-    if args.device == "cuda" and not torch.cuda.is_available():
-        print("\ncuda is not avaiable.\n")
-        args.device = "cuda"
+    # 如果本意是：只有在用户 args.device 指定 "cuda" 时才尝试用 GPU，
+    # 若不可用则自动使用 CPU，可以改为：
+    '''
+    if args.device == "cuda":
+        if torch.cuda.is_available():
+            device = torch.device("cuda:0")
+        else:
+            print("\ncuda is not available.\n自动切换到 CPU...")
+            device = torch.device("cpu")
+    else:
+        device = torch.device("cpu")
+    '''
+
+    print(f"最终使用的计算设备: {device}")
+    args.device = device  # 若需要在后续使用
 
     run(args)
