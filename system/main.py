@@ -6,7 +6,7 @@ import time
 import warnings
 import numpy as np
 import torchvision
-
+from test import *
 from flcore.servers.servercp import FedCP
 from flcore.trainmodel.models import *
 
@@ -38,8 +38,8 @@ def run(args):
                 args.model = FedAvgCNN(in_features=1, num_classes=args.num_classes, dim=1024).to(args.device)
             elif args.dataset[:5] == "Cifar":
                 args.model = FedAvgCNN(in_features=3, num_classes=args.num_classes, dim=1600).to(args.device)
-            elif args.dataset[:13] =="tiny-imagenet":
-                args.model ==FedAvgResNet18(in_features=3, num_classes=args.num_classes, dim=1600).to(args.device)
+            # elif args.dataset[:13] =="tiny-imagenet":
+            #     args.model ==FedAvgResNet18(in_features=3, num_classes=args.num_classes, dim=1600).to(args.device)
             else:
                 args.model = FedAvgCNN(in_features=3, num_classes=args.num_classes, dim=10816).to(args.device)
 
@@ -51,9 +51,9 @@ def run(args):
         
         else:
             raise NotImplementedError
-                            
-        print(args.model)
 
+
+        print(args.model)
         if args.algorithm == "FedCP":
             args.head = copy.deepcopy(args.model.fc)
             args.model.fc = nn.Identity()

@@ -5,12 +5,15 @@ import matplotlib.pyplot as plt
 import requests
 import zipfile
 from tqdm import tqdm
-from PIL import Image  # 新增：用于读取图片像素
+from PIL import Image  # 用于读取图片像素
+
+# Tiny-ImageNet 常用均值和标准差 (与 ImageNet 略有差别，以下仅供参考)
+TINY_IMAGENET_MEAN = np.array([0.4802, 0.4481, 0.3975], dtype=np.float32)
+TINY_IMAGENET_STD  = np.array([0.2302, 0.2265, 0.2262], dtype=np.float32)
 
 # 设置德拉克雷分布的 alpha 值和客户端数量
 alpha = 0.05
 num_clients = 20
-
 
 # 下载 Tiny ImageNet 数据集
 def download_and_extract_tiny_imagenet(output_dir):
@@ -95,13 +98,12 @@ def split_data_by_dirichlet(data, labels, num_clients, alpha):
             client_data[client_id]['labels'].extend(labels[idx[start_idx:start_idx + proportion]])
             start_idx += proportion
 
-    # 检查每个客户端是否包含多个类别
+    # 确保每个客户端至少包含两个类别
     for client_id, content in client_data.items():
         unique_labels = np.unique(content['labels'])
         if len(unique_labels) < 2:
             print(f"Warning: Client {client_id} has only one class: {unique_labels}. Adding extra data.")
-            # 添加额外的样本，使其至少包含两个类别
-            extra_idx = np.random.choice(len(labels), size=10, replace=False)  # 随机选 10 个样本
+            extra_idx = np.random.choice(len(labels), size=10, replace=False)
             client_data[client_id]['data'].extend(data[extra_idx])
             client_data[client_id]['labels'].extend(labels[extra_idx])
 
@@ -115,41 +117,44 @@ def print_client_class_distribution(client_data, split_name):
         print(f"Client {client_id}: {len(unique_classes)} unique classes")
 
 
-# =============== 修改处：保存客户端数据时，把图像像素拷贝进来 ================
 def save_client_data(client_data, output_dir, prefix):
     """
-    保存客户端数据时调整通道顺序为 [C, H, W].
+    保存客户端数据时：
+      1. 将图像转为 float32 / [0,1]
+      2. 按 Tiny-ImageNet 的统计量做归一化 (可选)
+      3. 调整通道顺序为 [C, H, W]
+      4. 最终保存到 .npz
     """
     os.makedirs(output_dir, exist_ok=True)
 
     for client_id, content in client_data.items():
-        # 保存转换后的图像数组
         X = []
         for image_path in content['data']:
-            # 读取图像并转为 (H, W, 3) 的 RGB array
+            # 1) 读取图像为 RGB
             img = Image.open(image_path).convert('RGB')
-            img_array = np.array(img, dtype=np.uint8)  # shape: (64, 64, 3)
+            # 2) 转 float32, 归一化到 [0,1]
+            img_array = np.array(img, dtype=np.float32) / 255.0  # shape: (64, 64, 3)
 
-            # 调整通道顺序 (H, W, C) -> (C, H, W)
-            img_array = np.transpose(img_array, (2, 0, 1))  # shape: (3, 64, 64)
+            # 3) 按通道减均值除标准差
+            #    mean/std shape => (3,)，需要广播到 (64,64,3)，可手动循环或 reshape
+            for c in range(3):
+                img_array[..., c] = (img_array[..., c] - TINY_IMAGENET_MEAN[c]) / TINY_IMAGENET_STD[c]
+
+            # 4) (H,W,C) -> (C,H,W)
+            img_array = np.transpose(img_array, (2, 0, 1))  # shape: (3,64,64)
+
             X.append(img_array)
 
-        # 转成 numpy 数组 (N, 3, 64, 64)
-        X = np.array(X)
+        # 转成 (N,3,64,64)
+        X = np.array(X, dtype=np.float32)
+        Y = np.array(content['labels'], dtype=np.int64)
 
-        # 标签直接转 numpy
-        Y = np.array(content['labels'])
-
-        # 保存到 .npz
         client_path = os.path.join(output_dir, f"{prefix}{client_id}_.npz")
         np.savez(client_path, data={'x': X, 'y': Y})
 
 
-
-# 绘制气泡图
 def plot_bubble_distribution(client_data, num_classes, title):
     bubble_sizes = np.zeros((len(client_data), num_classes))
-
     for client_id, content in client_data.items():
         labels = np.array(content['labels'])
         for c in range(num_classes):
@@ -173,39 +178,38 @@ def plot_bubble_distribution(client_data, num_classes, title):
 
 
 # 主程序
-output_dir = 'tiny_imagenet_data'  # 数据集保存路径
-output_partition_dir = 'partitioned_tiny_imagenet'  # 数据划分保存路径
+if __name__ == "__main__":
+    output_dir = 'tiny_imagenet_data'          # 数据集保存路径
+    output_partition_dir = 'partitioned_tiny_imagenet'  # 数据划分保存路径
 
-# 下载并解压 Tiny ImageNet
-data_dir = download_and_extract_tiny_imagenet(output_dir)
+    # 1. 下载并解压 Tiny ImageNet
+    data_dir = download_and_extract_tiny_imagenet(output_dir)
 
-# 加载数据
-train_data, train_labels, val_data, val_labels = load_tiny_imagenet(data_dir)
+    # 2. 加载数据路径 + 标签
+    train_data, train_labels, val_data, val_labels = load_tiny_imagenet(data_dir)
 
-# 分割训练和测试数据
-train_client_data = split_data_by_dirichlet(train_data, train_labels, num_clients, alpha)
-val_client_data = split_data_by_dirichlet(val_data, val_labels, num_clients, alpha)
+    # 3. 分割训练和测试数据 (Dirichlet)
+    train_client_data = split_data_by_dirichlet(train_data, train_labels, num_clients, alpha)
+    val_client_data   = split_data_by_dirichlet(val_data,  val_labels,  num_clients, alpha)
 
-# 打印训练集每个客户端的类别数量
-print_client_class_distribution(train_client_data, split_name="Train")
+    # 4. 打印训练/验证集上每个客户端的类别数量
+    print_client_class_distribution(train_client_data, split_name="Train")
+    print_client_class_distribution(val_client_data,   split_name="Validation")
 
-# 打印验证集每个客户端的类别数量
-print_client_class_distribution(val_client_data, split_name="Validation")
+    print("===== Train Set Distribution =====")
+    for client_id, content in train_client_data.items():
+        print(f"Client {client_id}: {len(content['data'])} images")
 
-print("===== Train Set Distribution =====")
-for client_id, content in train_client_data.items():
-    print(f"Client {client_id}: {len(content['data'])} images")
+    print("\n===== Validation Set Distribution =====")
+    for client_id, content in val_client_data.items():
+        print(f"Client {client_id}: {len(content['data'])} images")
 
-print("\n===== Validation Set Distribution =====")
-for client_id, content in val_client_data.items():
-    print(f"Client {client_id}: {len(content['data'])} images")
+    # 5. 保存训练和测试数据到 npz (此时已做归一化 + [C,H,W] 通道变换)
+    save_client_data(train_client_data, output_partition_dir, prefix='train')
+    save_client_data(val_client_data,   output_partition_dir, prefix='test')
 
-# 保存训练和测试数据（此时已经把图像像素打包进 .npz）
-save_client_data(train_client_data, output_partition_dir, prefix='train')
-save_client_data(val_client_data, output_partition_dir, prefix='test')
+    # 6. 绘制气泡图
+    plot_bubble_distribution(train_client_data, num_classes=200, title=r"Train Set Distribution ($\alpha = 0.05$)")
+    plot_bubble_distribution(val_client_data,   num_classes=200, title=r"Validation Set Distribution ($\alpha = 0.05$)")
 
-# 绘制气泡图
-plot_bubble_distribution(train_client_data, num_classes=200, title=r"Train Set Distribution ($\beta = 0.5$)")
-plot_bubble_distribution(val_client_data, num_classes=200, title=r"Validation Set Distribution ($\beta = 0.5$)")
-
-print(f"数据已保存到 {output_partition_dir} 文件夹下！")
+    print(f"数据已保存到 {output_partition_dir} 文件夹下！")

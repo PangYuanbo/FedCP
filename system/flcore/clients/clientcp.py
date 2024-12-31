@@ -96,8 +96,6 @@ class clientCP:
 
     def test_metrics(self):
         testloader = self.load_test_data()
-        for x, y in testloader:
-            print(f"Labels in batch: {np.unique(y.cpu().numpy())}")
         self.model.eval()
 
         test_acc = 0
@@ -150,14 +148,20 @@ class clientCP:
             self.model.gate.gm = []
             self.pm_train = []
             for i, (x, y) in enumerate(trainloader):
+                if torch.isnan(x).any() or torch.isinf(x).any():
+                    print(f"NaN/Inf found in input x at batch {batch_idx}")
                 if type(x) == type([]):
                     x[0] = x[0].to(self.device)
                 else:
                     x = x.to(self.device)
                 y = y.to(self.device)
                 output, rep, rep_base = self.model(x, is_rep=True, context=self.context)
+                # for idx, pm_tensor in enumerate(self.model.gate.pm):
+                #     if torch.isnan(pm_tensor).any():
+                #         print(f"NaN in pm[{idx}] at step {i}")
+
                 loss = self.loss(output, y)
-                loss += MMD(rep, rep_base, 'rbf', self.device) * self.lamda
+                # loss += MMD(rep, rep_base, 'rbf', self.device) * self.lamda
                 self.opt.zero_grad()
                 loss.backward()
                 # grad_norm = 0.0
@@ -171,13 +175,13 @@ class clientCP:
         clip_value =0.02# 梯度裁剪阈值
         epsilon = 5 # 隐私预算
         delta = 1e-5  # 隐私泄露概率
-        # if round == 100:
-        #     save_dir = "model_pretrain"
-        #     os.makedirs(save_dir, exist_ok=True)
-        #     file_name = f"{self.id}_{dataset}_100round.pth"
-        #     torch.save(self.model.state_dict(), file_name)
+        if round == 100:
+            save_dir = "model_pretrain"
+            os.makedirs(save_dir, exist_ok=True)
+            file_name = f"{self.id}_{args.dataset}_100round.pth"
+            torch.save(self.model.state_dict(), file_name)
 
-        if self.dp :
+        if self.dp  :
             # 计算目标层的参数更新量
             param_diff = {}
             for name, param in self.model.model.head.named_parameters():
@@ -267,6 +271,7 @@ class Ensemble(nn.Module):
         self.gate = Gate(cs)
 
     def forward(self, x, is_rep=False, context=None):
+
         rep = self.model.feature_extractor(x)  # feature_extractor is the global feature_extractor
         gate_in = rep
 

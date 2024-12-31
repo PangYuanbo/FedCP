@@ -70,11 +70,23 @@ class FedAvgCNN(nn.Module):
         self.fc = nn.Linear(dim1, num_classes)
 
     def forward(self, x):
+        if torch.isnan(x).any() or torch.isinf(x).any():
+            print("NaN/Inf after conv0!")
         out = self.conv1(x)
+        if torch.isnan(out).any() or torch.isinf(out).any():
+            print("NaN/Inf after conv1!")
         out = self.conv2(out)
+        if torch.isnan(out).any() or torch.isinf(out).any():
+            print("NaN/Inf after conv2!")
         out = torch.flatten(out, 1)
+        if torch.isnan(out).any() or torch.isinf(out).any():
+            print("NaN/Inf after conv3!")
         out = self.fc1(out)
+        if torch.isnan(out).any() or torch.isinf(out).any():
+            print("NaN/Inf after conv4!")
         out = self.fc(out)
+        if torch.isnan(out).any() or torch.isinf(out).any():
+            print("NaN/Inf after conv5!")
         return out
 
 
