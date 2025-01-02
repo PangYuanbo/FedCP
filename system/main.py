@@ -36,7 +36,7 @@ def run(args):
         if model_str == "cnn":
             if args.dataset[:5] == "mnist":
                 args.model = FedAvgCNN(in_features=1, num_classes=args.num_classes, dim=1024).to(args.device)
-            elif args.dataset[:5] == "Cifar":
+            elif args.dataset[:5] == "cifar":
                 args.model = FedAvgCNN(in_features=3, num_classes=args.num_classes, dim=1600).to(args.device)
             # elif args.dataset[:13] =="tiny-imagenet":
             #     args.model ==FedAvgResNet18(in_features=3, num_classes=args.num_classes, dim=1600).to(args.device)
@@ -45,6 +45,7 @@ def run(args):
 
         elif model_str == "resnet":
             args.model = torchvision.models.resnet18(pretrained=False, num_classes=args.num_classes).to(args.device)
+            # args.model.conv1 = nn.Conv2d(1, 64, kernel_size=7, stride=2, padding=3, bias=False).to(args.device)
 
         elif model_str == "fastText":
             args.model = fastText(hidden_dim=hidden_dim, vocab_size=vocab_size, num_classes=args.num_classes).to(args.device)
