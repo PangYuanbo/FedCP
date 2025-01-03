@@ -1,1 +1,2 @@
-import p
+import torch
+print(torch.__version__)

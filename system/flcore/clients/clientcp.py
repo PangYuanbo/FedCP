@@ -175,11 +175,6 @@ class clientCP:
         clip_value =0.02# 梯度裁剪阈值
         epsilon = 5 # 隐私预算
         delta = 1e-5  # 隐私泄露概率
-        if round == 100:
-            save_dir = "model_pretrain"
-            os.makedirs(save_dir, exist_ok=True)
-            file_name = f"{self.id}_{args.dataset}_100round.pth"
-            torch.save(self.model.state_dict(), file_name)
 
         if self.dp  :
             # 计算目标层的参数更新量
