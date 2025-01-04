@@ -25,7 +25,7 @@ def run(args):
 
     time_list = []
     reporter = MemReporter()
-    model_str = args.model
+    args.modle_name = args.model
 
     for i in range(args.prev, args.times):
         print(f"\n============= Running time: {i}th =============")
@@ -33,7 +33,7 @@ def run(args):
         start = time.time()
 
         # Generate args.model
-        if model_str == "cnn":
+        if args.modle_name == "cnn":
             if args.dataset[:5] == "mnist":
                 args.model = FedAvgCNN(in_features=1, num_classes=args.num_classes, dim=1024).to(args.device)
             elif args.dataset[:5] == "cifar":
@@ -43,11 +43,11 @@ def run(args):
             else:
                 args.model = FedAvgCNN(in_features=3, num_classes=args.num_classes, dim=10816).to(args.device)
 
-        elif model_str == "resnet":
+        elif args.modle_name == "resnet":
             args.model = torchvision.models.resnet18(pretrained=False, num_classes=args.num_classes).to(args.device)
             # args.model.conv1 = nn.Conv2d(1, 64, kernel_size=7, stride=2, padding=3, bias=False).to(args.device)
 
-        elif model_str == "fastText":
+        elif args.modle_name == "fastText":
             args.model = fastText(hidden_dim=hidden_dim, vocab_size=vocab_size, num_classes=args.num_classes).to(args.device)
         
         else:
@@ -83,6 +83,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     # general
     parser.add_argument('-dp','--difference_privacy', type=bool, default=False)
+    parser.add_argument('-dpl','--difference_privacy_layer', type=str, default="model.head")
     parser.add_argument('-dev', "--device", type=str, default="cuda",
                         choices=["cpu", "cuda"])
     parser.add_argument('-pre', "--pretrain", type=bool, default=False)
@@ -90,6 +91,7 @@ if __name__ == "__main__":
     parser.add_argument('-data', "--dataset", type=str, default="mnist")
     parser.add_argument('-nb', "--num_classes", type=int, default=10)
     parser.add_argument('-m', "--model", type=str, default="cnn")
+    parser.add_argument('-mn', "--model_name", type=str, default="cnn")
     parser.add_argument('-lbs', "--batch_size", type=int, default=10)
     parser.add_argument('-lr', "--local_learning_rate", type=float, default=0.005,
                         help="Local learning rate")
@@ -115,6 +117,7 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
     print(args.device_id)
+
     os.environ["CUDA_VISIBLE_DEVICES"] = args.device_id
 
 

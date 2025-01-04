@@ -46,7 +46,7 @@ class FedCP:
                             test_samples=len(test_data), 
                             ConditionalSelection=cs)
             if args.pretrain:
-                save_dir = "model_pretrain"
+                save_dir = f"model_pretrain/{args.dataset}-{args.model_name}"
                 file_name = f"{i}_{self.dataset}_100round.pth"
                 model_path = os.path.join(save_dir, file_name)
                 if os.path.exists(model_path):
