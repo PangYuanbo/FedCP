@@ -91,6 +91,7 @@ class clientCP:
         headw_p = headw_ps[-1]
         for mat in headw_ps[-2::-1]:
             headw_p = torch.matmul(headw_p, mat)
+            print(1)
         headw_p.detach_()
         self.context = torch.sum(headw_p, dim=0, keepdim=True)
 
@@ -154,7 +155,7 @@ class clientCP:
         return test_acc, test_num, auc
 
     def train_cs_model(self,round,args):
-        initial_params = {name: param.clone().detach() for name, param in self.model.model.head.named_parameters()}
+        initial_params = {name: param.clone().detach() for name, param in self.dp_layer}
         # print("Model Layers:")
         # for name, module in self.model.named_modules():
         #     print(f"Layer Name: {name}, Layer Type: {type(module)}")
@@ -209,7 +210,6 @@ class clientCP:
                 noise = torch.normal(
                     mean=0,
                     std=(clip_value / epsilon) * torch.sqrt(torch.tensor(2.0) * torch.log(torch.tensor(1.25 / delta))),
-
                     size=diff.shape
                 ).to(diff.device)
                 param_diff[name] += noise
