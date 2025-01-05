@@ -129,7 +129,10 @@ class FedCP:
         total_start = time.time()
         result_dir = "results"
         os.makedirs(result_dir, exist_ok=True)
-        filename = f"results_{args.dataset}_{args.global_rounds}_{args.local_learning_rate:.4f}.txt"
+        if args.difference_privacy:
+            filename = f"results_{args.dataset}_{args.global_rounds}_{args.local_learning_rate:.4f}_{args.difference_privacy_layer}.txt"
+        else:
+            filename = f"results_{args.dataset}_{args.global_rounds}_{args.local_learning_rate:.4f}.txt"
         file_path = os.path.join(result_dir, filename)
         for i in range(self.global_rounds+1):
             if args.pretrain and i < 100:

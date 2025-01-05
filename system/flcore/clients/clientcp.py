@@ -27,7 +27,7 @@ class clientCP:
         self.learning_rate = args.local_learning_rate
         self.local_steps = args.local_steps
 
-
+        self.clip_value = 0.02
 
 
 
@@ -191,16 +191,24 @@ class clientCP:
                 self.opt.step()
         # 在本地全部轮次完成后，计算目标层的差值并进行裁剪和噪声添加
         clip_value =0.02# 梯度裁剪阈值
-        epsilon = 5 # 隐私预算
+        epsilon = 3 # 隐私预算
         delta = 1e-5  # 隐私泄露概率
 
         if self.dp  :
             # 计算目标层的参数更新量
             param_diff = {}
+            # 初始化存储范数的列表
+            diff_norms = []
+
+            # 计算差值并存储范数
             for name, param in self.dp_layer:
                 param_diff[name] = (param - initial_params[name]).detach()
                 diff_norm = param_diff[name].norm(p=2).item()
+                diff_norms.append(diff_norm)
                 # print(f"ClientID: {self.id}, Layer Name: {name}, Diff Norm: {diff_norm:.4f}")
+
+            # 动态设置 clip_value 为 90 分位数
+            clip_value = torch.tensor(diff_norms).kthvalue(int(len(diff_norms) * 0.9))[0].item() # 梯度裁剪阈值
 
             # 对差值进行裁剪和噪声添加
             for name, diff in param_diff.items():
