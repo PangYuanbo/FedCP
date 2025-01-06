@@ -207,7 +207,6 @@ class clientCP:
                 param_diff[name] = (param - initial_params[name]).detach()
                 diff_norm = param_diff[name].norm(p=2).item()
                 diff_norms.append(diff_norm)
-
             if len(diff_norms) == 0:
                 raise ValueError("diff_norms is empty. Ensure `self.dp_layer` contains valid parameters.")
 
@@ -301,9 +300,9 @@ class Ensemble(nn.Module):
         self.feature_extractor = feature_extractor
 
         for param in self.head_g.parameters():
-            param.requires_grad = False
+            param.requires_grad = True
         for param in self.feature_extractor.parameters():
-            param.requires_grad = False
+            param.requires_grad = True
 
         self.flag = 0
         self.tau = 1
