@@ -55,7 +55,7 @@ class clientCP:
             target_module = getattr(target_module, attr)  # 动态获取模块
 
         # 获取目标模块的 named_parameters()
-        self.dp_layer = target_module.named_parameters()
+        self.dp_layer = target_module
 
         self.opt = torch.optim.SGD(self.model.parameters(), lr=self.learning_rate)
 
@@ -155,7 +155,9 @@ class clientCP:
         return test_acc, test_num, auc
 
     def train_cs_model(self,round,args):
-        initial_params = {name: param.clone().detach() for name, param in self.dp_layer}
+
+
+        initial_params = {name: param.clone().detach() for name, param in self.dp_layer.named_parameters()}
         # print("Model Layers:")
         # for name, module in self.model.named_modules():
         #     print(f"Layer Name: {name}, Layer Type: {type(module)}")
@@ -191,40 +193,60 @@ class clientCP:
                 self.opt.step()
         # 在本地全部轮次完成后，计算目标层的差值并进行裁剪和噪声添加
         clip_value =0.02# 梯度裁剪阈值
-        epsilon = 3 # 隐私预算
+        epsilon = 0.5 # 隐私预算
         delta = 1e-5  # 隐私泄露概率
 
-        if self.dp  :
+        if self.dp :
             # 计算目标层的参数更新量
             param_diff = {}
             # 初始化存储范数的列表
             diff_norms = []
 
             # 计算差值并存储范数
-            for name, param in self.dp_layer:
+            for name, param in self.dp_layer.named_parameters():
                 param_diff[name] = (param - initial_params[name]).detach()
                 diff_norm = param_diff[name].norm(p=2).item()
                 diff_norms.append(diff_norm)
-                # print(f"ClientID: {self.id}, Layer Name: {name}, Diff Norm: {diff_norm:.4f}")
+
+            if len(diff_norms) == 0:
+                raise ValueError("diff_norms is empty. Ensure `self.dp_layer` contains valid parameters.")
 
             # 动态设置 clip_value 为 90 分位数
-            clip_value = torch.tensor(diff_norms).kthvalue(int(len(diff_norms) * 0.9))[0].item() # 梯度裁剪阈值
+            # clip_value = torch.tensor(diff_norms).kthvalue(int(len(diff_norms) * 0.6))[0].item()  # 梯度裁剪阈值
 
             # 对差值进行裁剪和噪声添加
             for name, diff in param_diff.items():
-                norm = torch.norm(diff)
+                norm = torch.norm(diff)  # 计算差值的 2 范数
                 if norm > clip_value:
-                    diff = diff / norm * clip_value
+                    diff = diff / norm * clip_value  # 裁剪差值
+
+                # 添加噪声
+                noise_std = (clip_value / epsilon) * torch.sqrt(
+                    torch.tensor(2.0) * torch.log(torch.tensor(1.25 / delta)))
                 noise = torch.normal(
                     mean=0,
-                    std=(clip_value / epsilon) * torch.sqrt(torch.tensor(2.0) * torch.log(torch.tensor(1.25 / delta))),
+                    std=noise_std,
                     size=diff.shape
                 ).to(diff.device)
+
+                # 计算噪声的 2 范数
+                noise_norm = torch.norm(noise)
+
+                # 打印噪声与差值的比例
+                if norm > 0:
+                    print(
+                        f"Layer: {name}, Noise Norm: {noise_norm:.4f}, Diff Norm: {norm:.4f}, Ratio: {noise_norm / norm:.4f}")
+                else:
+                    print(
+                        f"Layer: {name}, Noise Norm: {noise_norm:.4f}, Diff Norm: {norm:.4f}, Ratio: N/A (Diff Norm is zero)")
+
                 param_diff[name] += noise
 
-            # 更新模型的目标层参数
-            for name, param in self.dp_layer:
-                param.data = initial_params[name] + param_diff[name]
+                # 更新模型的目标层参数
+                for name, param in self.dp_layer.named_parameters():
+                    param.data = initial_params[name] + param_diff[name]
+        # if self.dp_layer == self.model.model.head :
+        #     print("更新head")
         self.pm_train.extend(self.model.gate.pm)
         scores = [torch.mean(pm).item() for pm in self.pm_train]
         print(np.mean(scores), np.std(scores))
