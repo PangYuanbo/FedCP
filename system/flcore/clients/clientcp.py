@@ -1,16 +1,12 @@
 import copy
-import operator
-from functools import reduce
 import torch
 import torch.nn as nn
 import numpy as np
-import os
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
 from sklearn.preprocessing import label_binarize
 from sklearn import metrics
 from utils.data_utils import read_client_data
-from utils.model_utils import clip_and_add_noise_with_privacy
 
 
 class clientCP:
@@ -26,8 +22,8 @@ class clientCP:
         self.batch_size = args.batch_size
         self.learning_rate = args.local_learning_rate
         self.local_steps = args.local_steps
-
         self.clip_value = 0.02
+        self.noise= {}
 
 
 
@@ -46,7 +42,7 @@ class clientCP:
             feature_extractor=copy.deepcopy(self.model.feature_extractor)
             # feature_extractor is the global feature_extractor
         )
-
+        print(self.model)
         # 假设 args.dpm = "head"
         attr_path = f"model.{args.difference_privacy_layer}".split(".")  # 拼接路径并分割为列表
         # 逐层获取属性
@@ -155,7 +151,9 @@ class clientCP:
         return test_acc, test_num, auc
 
     def train_cs_model(self,round,args):
-
+        if round > 0:
+            for name, param in self.dp_layer.named_parameters():
+                param.data = param.data  - self.noise[name]
 
         initial_params = {name: param.clone().detach() for name, param in self.dp_layer.named_parameters()}
         # print("Model Layers:")
@@ -239,7 +237,8 @@ class clientCP:
                     print(
                         f"Layer: {name}, Noise Norm: {noise_norm:.4f}, Diff Norm: {norm:.4f}, Ratio: N/A (Diff Norm is zero)")
 
-                param_diff[name] += noise
+                self.noise[name]= noise
+                param_diff[name]+=noise
 
                 # 更新模型的目标层参数
                 for name, param in self.dp_layer.named_parameters():
@@ -300,9 +299,9 @@ class Ensemble(nn.Module):
         self.feature_extractor = feature_extractor
 
         for param in self.head_g.parameters():
-            param.requires_grad = True
+            param.requires_grad = False
         for param in self.feature_extractor.parameters():
-            param.requires_grad = True
+            param.requires_grad = False
 
         self.flag = 0
         self.tau = 1
