@@ -150,15 +150,21 @@ class clientCP:
 
         return test_acc, test_num, auc
 
-    def train_cs_model(self,round,args):
+    def train_cs_model(self, round, args):
         if round > 0:
             for name, param in self.dp_layer.named_parameters():
-                param.data = param.data  - self.noise[name]
+                param.data = param.data - self.noise[name]
+
+        if round > 100:
+            for param in self.model.head_g.parameters():
+                param.requires_grad = True
+            for param in self.model.feature_extractor.parameters():
+                param.requires_grad = True
+            for param in self.model.cs.parameters():
+                param.requires_grad = False
 
         initial_params = {name: param.clone().detach() for name, param in self.dp_layer.named_parameters()}
-        # print("Model Layers:")
-        # for name, module in self.model.named_modules():
-        #     print(f"Layer Name: {name}, Layer Type: {type(module)}")
+
         trainloader = self.load_train_data()
         self.model.train()
         for _ in range(self.local_steps):
@@ -167,87 +173,62 @@ class clientCP:
             self.pm_train = []
             for i, (x, y) in enumerate(trainloader):
                 if torch.isnan(x).any() or torch.isinf(x).any():
-                    print(f"NaN/Inf found in input x at batch {batch_idx}")
+                    print(f"NaN/Inf found in input x at batch {i}")
                 if type(x) == type([]):
                     x[0] = x[0].to(self.device)
                 else:
                     x = x.to(self.device)
                 y = y.to(self.device)
                 output, rep, rep_base = self.model(x, is_rep=True, context=self.context)
-                # for idx, pm_tensor in enumerate(self.model.gate.pm):
-                #     if torch.isnan(pm_tensor).any():
-                #         print(f"NaN in pm[{idx}] at step {i}")
 
                 loss = self.loss(output, y)
                 loss += MMD(rep, rep_base, 'rbf', self.device) * self.lamda
                 self.opt.zero_grad()
                 loss.backward()
-                # grad_norm = 0.0
-                # for param in self.model.model.head.parameters():
-                #     if param.grad is not None:
-                #         grad_norm += param.grad.data.norm(2).item() ** 2
-                # grad_norm = grad_norm ** 0.5  # 开根号得到 L2 范数
-                # print(f"[Epoch step {i}] Gradient norm of self.model.model.head: {grad_norm:.4f}")
                 self.opt.step()
-        # 在本地全部轮次完成后，计算目标层的差值并进行裁剪和噪声添加
-        clip_value =0.02# 梯度裁剪阈值
-        epsilon = 0.5 # 隐私预算
-        delta = 1e-5  # 隐私泄露概率
 
-        if self.dp :
-            # 计算目标层的参数更新量
+        # Clip and add noise for DP if enabled
+        clip_value = 0.02
+        epsilon = 0.5
+        delta = 1e-5
+
+        if self.dp:
             param_diff = {}
-            # 初始化存储范数的列表
             diff_norms = []
 
-            # 计算差值并存储范数
             for name, param in self.dp_layer.named_parameters():
                 param_diff[name] = (param - initial_params[name]).detach()
                 diff_norm = param_diff[name].norm(p=2).item()
                 diff_norms.append(diff_norm)
-            if len(diff_norms) == 0:
-                raise ValueError("diff_norms is empty. Ensure `self.dp_layer` contains valid parameters.")
 
-            # 动态设置 clip_value 为 90 分位数
-            # clip_value = torch.tensor(diff_norms).kthvalue(int(len(diff_norms) * 0.6))[0].item()  # 梯度裁剪阈值
-
-            # 对差值进行裁剪和噪声添加
             for name, diff in param_diff.items():
-                norm = torch.norm(diff)  # 计算差值的 2 范数
+                norm = torch.norm(diff)
                 if norm > clip_value:
-                    diff = diff / norm * clip_value  # 裁剪差值
+                    diff = diff / norm * clip_value
 
-                # 添加噪声
                 noise_std = (clip_value / epsilon) * torch.sqrt(
                     torch.tensor(2.0) * torch.log(torch.tensor(1.25 / delta)))
-                noise = torch.normal(
-                    mean=0,
-                    std=noise_std,
-                    size=diff.shape
-                ).to(diff.device)
+                noise = torch.normal(mean=0, std=noise_std, size=diff.shape).to(diff.device)
 
-                # 计算噪声的 2 范数
-                noise_norm = torch.norm(noise)
+                self.noise[name] = noise
+                param_diff[name] += noise
 
-                # 打印噪声与差值的比例
-                if norm > 0:
-                    print(
-                        f"Layer: {name}, Noise Norm: {noise_norm:.4f}, Diff Norm: {norm:.4f}, Ratio: {noise_norm / norm:.4f}")
-                else:
-                    print(
-                        f"Layer: {name}, Noise Norm: {noise_norm:.4f}, Diff Norm: {norm:.4f}, Ratio: N/A (Diff Norm is zero)")
-
-                self.noise[name]= noise
-                param_diff[name]+=noise
-
-                # 更新模型的目标层参数
                 for name, param in self.dp_layer.named_parameters():
                     param.data = initial_params[name] + param_diff[name]
-        # if self.dp_layer == self.model.model.head :
-        #     print("更新head")
+
         self.pm_train.extend(self.model.gate.pm)
         scores = [torch.mean(pm).item() for pm in self.pm_train]
         print(np.mean(scores), np.std(scores))
+
+        # Save model at 100th round
+        if round == 100:
+            import os
+            save_dir = "pretrain"
+            os.makedirs(save_dir, exist_ok=True)  # Create folder if it doesn't exist
+            filename = f"results_{args.dataset}_client{self.id}_{args.global_rounds}_{args.local_learning_rate:.4f}_{args.difference_privacy_layer}.pt"
+            save_path = os.path.join(save_dir, filename)
+            torch.save(self.model.state_dict(), save_path)
+            print(f"Model saved to {save_path}")
 
 
 def MMD(x, y, kernel, device='cpu'):
