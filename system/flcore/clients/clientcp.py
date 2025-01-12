@@ -151,7 +151,7 @@ class clientCP:
         return test_acc, test_num, auc
 
     def train_cs_model(self, round, args):
-        if round > 0:
+        if round > 0 and self.dp:
             for name, param in self.dp_layer.named_parameters():
                 param.data = param.data - self.noise[name]
 
