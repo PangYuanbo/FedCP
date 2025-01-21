@@ -151,6 +151,7 @@ class clientCP:
         return test_acc, test_num, auc
 
     def train_cs_model(self, round, args):
+        print(id(self.model.model))
         if round > 0 and self.dp:
             for name, param in self.dp_layer.named_parameters():
                 param.data = param.data - self.noise[name]
@@ -221,7 +222,7 @@ class clientCP:
         print(np.mean(scores), np.std(scores))
 
         # Save model at 100th round
-        if round == 100:
+        if round == 500:
             import os
             save_dir = "pretrain"
             os.makedirs(save_dir, exist_ok=True)  # Create folder if it doesn't exist
@@ -275,9 +276,9 @@ class Ensemble(nn.Module):
     def __init__(self, model, cs, head_g, feature_extractor) -> None:
         super().__init__()
 
-        self.model = model
+        self.model = model #
         self.head_g = head_g  # head_g is the global head
-        self.feature_extractor = feature_extractor
+        self.feature_extractor = feature_extractor # feature_extractor is the global feature_extractor
 
         for param in self.head_g.parameters():
             param.requires_grad = False
