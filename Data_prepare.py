@@ -10,7 +10,7 @@ CIFAR10_MEAN = np.array([0.4914, 0.4822, 0.4465], dtype=np.float32)
 CIFAR10_STD = np.array([0.247, 0.243, 0.261], dtype=np.float32)
 
 # 设置德拉克雷分布的 alpha 值和客户端数量
-alpha = 0.5
+alpha = 1
 num_clients = 20
 
 

@@ -151,17 +151,16 @@ class clientCP:
         return test_acc, test_num, auc
 
     def train_cs_model(self, round, args):
-        print(id(self.model.model))
         if round > 0 and self.dp:
             for name, param in self.dp_layer.named_parameters():
-                param.data = param.data - self.noise[name]
+                param.data =self.noise[name]
 
         if round > 100:
             for param in self.model.head_g.parameters():
                 param.requires_grad = True
             for param in self.model.feature_extractor.parameters():
                 param.requires_grad = True
-            for param in self.model.cs.parameters():
+            for param in self.model.gate.cs.parameters():
                 param.requires_grad = False
 
         initial_params = {name: param.clone().detach() for name, param in self.dp_layer.named_parameters()}
@@ -211,7 +210,7 @@ class clientCP:
                     torch.tensor(2.0) * torch.log(torch.tensor(1.25 / delta)))
                 noise = torch.normal(mean=0, std=noise_std, size=diff.shape).to(diff.device)
 
-                self.noise[name] = noise
+                self.noise[name] = copy.deepcopy(param_diff[name])
                 param_diff[name] += noise
 
                 for name, param in self.dp_layer.named_parameters():
@@ -276,7 +275,7 @@ class Ensemble(nn.Module):
     def __init__(self, model, cs, head_g, feature_extractor) -> None:
         super().__init__()
 
-        self.model = model #
+        self.model = model
         self.head_g = head_g  # head_g is the global head
         self.feature_extractor = feature_extractor # feature_extractor is the global feature_extractor
 
