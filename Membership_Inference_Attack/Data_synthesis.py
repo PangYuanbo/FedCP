@@ -3,7 +3,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
 import random
-
+from Membership_Inference_Attack.model import *
+import copy
 
 # ============ 1. 定义辅助函数 ============
 
@@ -70,7 +71,7 @@ def synthesize(
     for iteration in range(iter_max):
         # 2. 查询目标模型：f_target(x)，输出 shape=[1,10]
         with torch.no_grad():
-            y = target_model(x)  # shape=[1,10]
+            y = target_model(x, is_rep=True, context=context)  # shape=[1,10]
 
         # 当前目标类别置信度
         y_c = y[0, c].item()
@@ -165,9 +166,41 @@ def generate_synthetic_dataset(
 
 
 if __name__ == '__main__':
+    DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model = FedAvgCNN(in_features=1, num_classes=10, dim=1024).to(DEVICE)
+    model_head = copy.deepcopy(model.fc)
+    model.fc = nn.Identity()
+    model = LocalModel(model, model_head)
+    in_dim = list(model.head.parameters())[0].shape[1]
+    cs = ConditionalSelection(in_dim, in_dim).to(DEVICE)
+
+    model = Ensemble(
+        model=copy.deepcopy(model),
+        cs=copy.deepcopy(cs),
+        head_g=copy.deepcopy(model.head),  # head is the global head
+        feature_extractor=copy.deepcopy(model.feature_extractor)
+        # feature_extractor is the global feature_extractor
+    )
+    target_model = copy.deepcopy(model)
+    # 打印模型所需的 state_dict 键
+    print("Keys required by the model:")
+    for key in target_model.state_dict().keys():
+        print(key)
+    # 加载文件并打印其键
+    loaded_weights = torch.load('../system/pretrain/results_mnist-0.1-npz_client0_1000_0.0050.pt', map_location=DEVICE)
+
+    # 打印加载文件的键
+    print("\nKeys in the loaded state_dict:")
+    for key in loaded_weights.keys():
+        print(key)
+
+    # 如果键名有规则，比如前缀不同
+    new_weights = {k.replace("old_prefix", "new_prefix"): v for k, v in loaded_weights.items()}
+    target_model.load_state_dict(new_weights)
+    target_model.load_state_dict(torch.load('../system/pretrain/results_mnist-0.1-npz_client0_1000_0.0050.pt', map_location=DEVICE))
     # 用 dummy_target_model 演示：你应替换为你真正的 target_model
     generate_synthetic_dataset(
-        target_model=dummy_target_model,
+        target_model=target_model,
         total_samples=5000,  # 总数=5000
         per_class=500,  # 每个类别 500
         output_path='synthetic_mnist.pt'
