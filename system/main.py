@@ -92,7 +92,7 @@ if __name__ == "__main__":
     parser.add_argument('-nb', "--num_classes", type=int, default=10)
     parser.add_argument('-m', "--model", type=str, default="cnn")
     parser.add_argument('-mn', "--model_name", type=str, default="cnn")
-    parser.add_argument('-lbs', "--batch_size", type=int, default=10)
+    parser.add_argument('-lbs', "--batch_size", type=int, default=5)
     parser.add_argument('-lr', "--local_learning_rate", type=float, default=0.005,
                         help="Local learning rate")
     parser.add_argument('-gr', "--global_rounds", type=int, default=1000)

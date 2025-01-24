@@ -13,7 +13,7 @@ def rand_record_mnist():
     随机初始化一张“伪”MNIST图像，返回 shape = (1, 28, 28) 的张量，取值在 [0,1]。
     注意输出是 (1,28,28)，以便和后续 PyTorch 模型的输入格式对齐。
     """
-    return torch.rand(1, 28, 28)
+    return torch.rand(1,1, 28, 28)
 
 
 def randomize_k_features(x, k=50):
@@ -29,19 +29,7 @@ def randomize_k_features(x, k=50):
     return x
 
 
-def dummy_target_model(x):
-    """
-    演示用的“假”目标模型 (dummy)，
-    x: shape = [batch_size, 1, 28, 28]
-    返回 shape = [batch_size, 10] 的预测分布（每个样本对应10个类别的概率）。
-    这里仅用随机生成来模拟输出分布。
-    在实际应用中，请替换为你真实的 target model。
-    """
-    batch_size = x.size(0)
-    # 随机生成 [batch_size, 10] 的概率向量
-    out = torch.rand(batch_size, 10)
-    out = out / out.sum(dim=1, keepdim=True)  # 归一化到 [0,1]
-    return out
+
 
 
 def synthesize(
@@ -49,7 +37,7 @@ def synthesize(
         c,  # 目标类别 (0~9)
         k_max=50,
         k_min=5,
-        conf_min=0.9,
+        conf_min=0.8,
         rej_max=30,
         iter_max=200
 ):
@@ -59,7 +47,16 @@ def synthesize(
     """
     # 1. 随机初始化 x
     x = rand_record_mnist()  # shape = (1,28,28)
-
+    headw_ps = []
+    for name, mat in target_model.model.head.named_parameters():
+        if 'weight' in name:
+            headw_ps.append(mat.data)
+    headw_p = headw_ps[-1]
+    for mat in headw_ps[-2::-1]:
+        headw_p = torch.matmul(headw_p, mat)
+        print(1)
+    headw_p.detach_()
+    context = torch.sum(headw_p, dim=0, keepdim=True)
     # 当前最佳样本及其置信度
     y_c_star = 0.0
     x_star = x.clone()
@@ -71,18 +68,21 @@ def synthesize(
     for iteration in range(iter_max):
         # 2. 查询目标模型：f_target(x)，输出 shape=[1,10]
         with torch.no_grad():
-            y = target_model(x, is_rep=True, context=context)  # shape=[1,10]
+            y = target_model(x, is_rep=False, context=context)  # shape=[1,10]
+        y = y[0]
+        y = F.softmax(y, dim=0)
 
         # 当前目标类别置信度
-        y_c = y[0, c].item()
+        y_c = y[ c].item()
 
         # 3. 若 y_c >= 历史最佳，则接受并尝试采样
         if y_c >= y_c_star:
             # 检查是否超过置信度阈值，并且 argmax 为 c
-            pred_class = torch.argmax(y, dim=1).item()
+            pred_class = torch.argmax(y).item()
             if y_c > conf_min and pred_class == c:
                 # 以 y_c 的概率“采样成功”
                 if random.random() < y_c:
+                    print(f"合成成功！iter={iteration}, y_c={y_c:.4f}")
                     return x  # shape = [1,28,28]
 
             # 更新“最佳”
@@ -120,6 +120,7 @@ def generate_synthetic_dataset(
     """
     all_data = []
     all_labels = []
+
 
     # 如果要保证合计数 == total_samples，假设 total_samples=5000, per_class=500，
     # 那么 10*500=5000。若要改动，请确保对应数量匹配。
@@ -174,14 +175,13 @@ if __name__ == '__main__':
     in_dim = list(model.head.parameters())[0].shape[1]
     cs = ConditionalSelection(in_dim, in_dim).to(DEVICE)
 
-    model = Ensemble(
+    target_model = Ensemble(
         model=copy.deepcopy(model),
         cs=copy.deepcopy(cs),
         head_g=copy.deepcopy(model.head),  # head is the global head
         feature_extractor=copy.deepcopy(model.feature_extractor)
         # feature_extractor is the global feature_extractor
     )
-    target_model = copy.deepcopy(model)
     # 打印模型所需的 state_dict 键
     print("Keys required by the model:")
     for key in target_model.state_dict().keys():
@@ -193,6 +193,7 @@ if __name__ == '__main__':
     print("\nKeys in the loaded state_dict:")
     for key in loaded_weights.keys():
         print(key)
+
 
     # 如果键名有规则，比如前缀不同
     new_weights = {k.replace("old_prefix", "new_prefix"): v for k, v in loaded_weights.items()}

@@ -24,18 +24,6 @@ DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
 # ===================================================
 # 1. 定义一个简单的 MLP，用于多分类 (target/shadow)
 # ===================================================
-class SimpleMLP(nn.Module):
-    def __init__(self, input_dim=784, hidden_dim=128, output_dim=10):
-        super(SimpleMLP, self).__init__()
-        self.fc1 = nn.Linear(input_dim, hidden_dim)
-        self.fc2 = nn.Linear(hidden_dim, output_dim)
-
-    def forward(self, x):
-        # x shape: (batch_size, 784)
-        x = self.fc1(x)
-        x = F.relu(x)
-        x = self.fc2(x)
-        return x  # logits
 
 # ===================================================
 # 2. 定义一个简单的 MLP，用于二分类 (attack model)

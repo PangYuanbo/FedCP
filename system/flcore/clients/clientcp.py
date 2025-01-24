@@ -314,8 +314,9 @@ class Ensemble(nn.Module):
         else:
             rep_g = self.gate(rep, self.tau, self.hard, gate_in, self.flag)
             output = self.head_g(rep_g)
-
+        print(output)
         if is_rep:
+
             return output, rep, self.feature_extractor(x)
         else:
             return output
