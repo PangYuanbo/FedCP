@@ -43,6 +43,7 @@ class clientCP:
             # feature_extractor is the global feature_extractor
         )
         print(self.model)
+
         # 假设 args.dpm = "head"
         attr_path = f"model.{args.difference_privacy_layer}".split(".")  # 拼接路径并分割为列表
         # 逐层获取属性
@@ -52,6 +53,15 @@ class clientCP:
 
         # 获取目标模块的 named_parameters()
         self.dp_layer = target_module
+        attr_path = f"model.{args.difference_privacy_layer2}".split(".")  # 拼接路径并分割为列表
+        # 逐层获取属性
+        target_module = self
+        for attr in attr_path:
+            target_module = getattr(target_module, attr)  # 动态获取模块
+
+        # 获取目标模块的 named_parameters()
+        self.dp_layer2 = target_module
+        print(f"DP layer: {self.dp_layer}", f"DP layer2: {self.dp_layer2}")
 
         self.opt = torch.optim.SGD(self.model.parameters(), lr=self.learning_rate)
 
@@ -151,19 +161,17 @@ class clientCP:
         return test_acc, test_num, auc
 
     def train_cs_model(self, round, args):
-        if round > 0 and self.dp:
-            for name, param in self.dp_layer.named_parameters():
-                param.data =self.noise[name]
 
-        if round > 100:
-            for param in self.model.head_g.parameters():
-                param.requires_grad = True
-            for param in self.model.feature_extractor.parameters():
-                param.requires_grad = True
-            for param in self.model.gate.cs.parameters():
-                param.requires_grad = False
+        # if round > 100:
+        #     for param in self.model.head_g.parameters():
+        #         param.requires_grad = True
+        #     for param in self.model.feature_extractor.parameters():
+        #         param.requires_grad = True
+        #     for param in self.model.gate.cs.parameters():
+        #         param.requires_grad = False
 
         initial_params = {name: param.clone().detach() for name, param in self.dp_layer.named_parameters()}
+        initial_params2 = {name: param.clone().detach() for name, param in self.dp_layer2.named_parameters()}
 
         trainloader = self.load_train_data()
         self.model.train()
@@ -188,7 +196,7 @@ class clientCP:
                 self.opt.step()
 
         # Clip and add noise for DP if enabled
-        clip_value = 0.02
+        clip_value = 0.2
         epsilon = 0.5
         delta = 1e-5
 
@@ -210,11 +218,29 @@ class clientCP:
                     torch.tensor(2.0) * torch.log(torch.tensor(1.25 / delta)))
                 noise = torch.normal(mean=0, std=noise_std, size=diff.shape).to(diff.device)
 
-                self.noise[name] = copy.deepcopy(param_diff[name])
                 param_diff[name] += noise
 
                 for name, param in self.dp_layer.named_parameters():
                     param.data = initial_params[name] + param_diff[name]
+
+            for name, param in self.dp_layer2.named_parameters():
+                param_diff[name] = (param - initial_params2[name]).detach()
+                diff_norm = param_diff[name].norm(p=2).item()
+                diff_norms.append(diff_norm)
+
+            for name, diff in param_diff.items():
+                norm = torch.norm(diff)
+                if norm > clip_value:
+                    diff = diff / norm * clip_value
+
+                noise_std = (clip_value / epsilon) * torch.sqrt(
+                    torch.tensor(2.0) * torch.log(torch.tensor(1.25 / delta)))
+                noise = torch.normal(mean=0, std=noise_std, size=diff.shape).to(diff.device)
+
+                param_diff[name] += noise
+
+                for name, param in self.dp_layer2.named_parameters():
+                    param.data = initial_params2[name] + param_diff[name]
 
         self.pm_train.extend(self.model.gate.pm)
         scores = [torch.mean(pm).item() for pm in self.pm_train]
@@ -225,7 +251,7 @@ class clientCP:
             import os
             save_dir = "pretrain"
             os.makedirs(save_dir, exist_ok=True)  # Create folder if it doesn't exist
-            filename = f"results_{args.dataset}_client{self.id}_{args.global_rounds}_{args.local_learning_rate:.4f}_{args.difference_privacy_layer}.pt"
+            filename = f"results_{args.dataset}_client{self.id}_{args.global_rounds}_{args.local_learning_rate:.4f}_{args.difference_privacy_layer}_{args.difference_privacy_layer2}.pt"
             save_path = os.path.join(save_dir, filename)
             torch.save(self.model.state_dict(), save_path)
             print(f"Model saved to {save_path}")
@@ -314,7 +340,6 @@ class Ensemble(nn.Module):
         else:
             rep_g = self.gate(rep, self.tau, self.hard, gate_in, self.flag)
             output = self.head_g(rep_g)
-        print(output)
         if is_rep:
 
             return output, rep, self.feature_extractor(x)

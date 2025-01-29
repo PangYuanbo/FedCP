@@ -84,6 +84,7 @@ if __name__ == "__main__":
     # general
     parser.add_argument('-dp','--difference_privacy', type=bool, default=False)
     parser.add_argument('-dpl','--difference_privacy_layer', type=str, default="model.head")
+    parser.add_argument('-dpl2', '--difference_privacy_layer2', type=str, default="model.feature_extractor")
     parser.add_argument('-dev', "--device", type=str, default="cuda",
                         choices=["cpu", "cuda"])
     parser.add_argument('-pre', "--pretrain", type=bool, default=False)

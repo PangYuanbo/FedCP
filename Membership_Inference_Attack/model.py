@@ -210,12 +210,12 @@ class Ensemble(nn.Module):
         rep = self.model.feature_extractor(x)  # feature_extractor is the global feature_extractor
         gate_in = rep
 
-        if context != None:
+        if context is not None:
             context = F.normalize(context, p=2, dim=1)
-            if type(x) == type([]):
-                self.context = torch.tile(context, (x[0].shape[0], 1))
+            if isinstance(x, list):
+                self.context = context.expand(x[0].shape[0], -1)
             else:
-                self.context = torch.tile(context, (x.shape[0], 1))
+                self.context = context.expand(x.shape[0], -1)
 
         if self.context != None:
             gate_in = rep * self.context
@@ -247,12 +247,6 @@ class Gate(nn.Module):
 
     def forward(self, rep, tau=1, hard=False, context=None, flag=0):
         pm, gm = self.cs(context, tau=tau, hard=hard)
-        if self.training:
-            self.pm.extend(pm)
-            self.gm.extend(gm)
-        else:
-            self.pm_.extend(pm)
-            self.gm_.extend(gm)
 
         if flag == 0:
             rep_p = rep * pm
