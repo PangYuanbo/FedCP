@@ -1,5 +1,4 @@
 import copy
-import torch
 import argparse
 import os
 import time
@@ -54,7 +53,6 @@ def run(args):
             raise NotImplementedError
 
 
-        print(args.model)
         if args.algorithm == "FedCP":
             args.head = copy.deepcopy(args.model.fc)
             args.model.fc = nn.Identity()
@@ -117,6 +115,7 @@ if __name__ == "__main__":
 
 
     args = parser.parse_args()
+    print(args.difference_privacy)
     print(args.device_id)
 
     os.environ["CUDA_VISIBLE_DEVICES"] = args.device_id

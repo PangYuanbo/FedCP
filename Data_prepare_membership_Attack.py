@@ -17,7 +17,6 @@ num_clients_normal = 20
 # 影子（用于成员攻击）训练的客户端数量
 num_clients_shadow = 20
 
-
 def load_mnist(data_dir):
     """
     加载 MNIST 数据集，返回：
@@ -184,7 +183,6 @@ def create_per_client_attack_dataset(
 
         # 取最小值，以防止测试数据比训练数据少
         M = min(len(train_data), len(test_data), 500)
-        # 上面示例直接取两者最小值和 500 的最小值，防止过大。可根据需求自定义。
 
         # 打乱
         idx_train = np.random.permutation(len(train_data))
@@ -232,19 +230,42 @@ if __name__ == "__main__":
     test_labels = test_labels[perm_test]
 
     # ========== 2. 拆分出 normal / shadow 两部分 (示例) ==========
+
     train_size = len(train_data)
+    test_size = len(test_data)
+
     half_train = train_size // 2
+    half_test = test_size // 2
+
+    # normal 部分 (各取一半)
     normal_train_data = train_data[:half_train]
     normal_train_labels = train_labels[:half_train]
-    shadow_train_data = train_data[half_train:]
-    shadow_train_labels = train_labels[half_train:]
-
-    test_size = len(test_data)
-    half_test = test_size // 2
     normal_test_data = test_data[:half_test]
     normal_test_labels = test_labels[:half_test]
-    shadow_test_data = test_data[half_test:]
-    shadow_test_labels = test_labels[half_test:]
+
+    # ------------------------------------------------
+    # 关键改动：shadow 部分在原先基础上，再额外加入 10% 的真实子集
+    # ------------------------------------------------
+
+    # 先确定 10% 的数量
+    ten_percent_train = int(train_size * 0.1)
+    ten_percent_test = int(test_size * 0.1)
+
+    # 从训练集前面抽 10% 作为真实子集（示例中直接取前 10%，可自行换成别的方法）
+    real_subset_train_data = train_data[:ten_percent_train]
+    real_subset_train_labels = train_labels[:ten_percent_train]
+
+    # 从测试集前面抽 10% 作为真实子集
+    real_subset_test_data = test_data[:ten_percent_test]
+    real_subset_test_labels = test_labels[:ten_percent_test]
+
+    # shadow 部分：原先后半部分 + 10% 的真实子集
+    shadow_train_data = np.concatenate([train_data[half_train:], real_subset_train_data], axis=0)
+    shadow_train_labels = np.concatenate([train_labels[half_train:], real_subset_train_labels], axis=0)
+
+    shadow_test_data = np.concatenate([test_data[half_test:], real_subset_test_data], axis=0)
+    shadow_test_labels = np.concatenate([test_labels[half_test:], real_subset_test_labels], axis=0)
+    # ------------------------------------------------
 
     # ========== 3. 对 normal / shadow 数据使用 Dirichlet 划分并 Shuffle ==========
     num_classes = 10
@@ -276,12 +297,11 @@ if __name__ == "__main__":
     print("[Info] Finished partitioning normal/shadow data.")
 
     # ========== 5. 为每个客户端生成攻击数据集 (member vs non-member) ==========
-    # 这里以 normal 为例，如果需要对 shadow 做同样的攻击数据，也可将 normal_* 换成 shadow_*
-    attack_out_dir = "attack_data_per_client_normal"
-    create_per_client_attack_dataset(
-        train_clients=normal_train_clients,
-        test_clients=normal_test_clients,
-        output_dir=attack_out_dir,
-        prefix="normal_client"
-    )
+    # attack_out_dir = "attack_data_per_client_normal"
+    # create_per_client_attack_dataset(
+    #     train_clients=normal_train_clients,
+    #     test_clients=normal_test_clients,
+    #     output_dir=attack_out_dir,
+    #     prefix="normal_client"
+    # )
     print("[Info] Per-client attack dataset generation done.")
