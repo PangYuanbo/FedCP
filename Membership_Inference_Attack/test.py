@@ -513,8 +513,8 @@ def train_attack_model(shadow_client_files, shadow_train_dataset,shadow_holdout_
     torch.save(attack_model.state_dict(), f'attack_model{target_label}.pth')
     attack_model.load_state_dict(torch.load(f'attack_model{target_label}.pth'))
 
-# for i in range(10):
-#     train_attack_model(shadow_client_files, shadow_train_dataset,shadow_holdout_dataset,i)
+for i in range(10):
+    train_attack_model(shadow_client_files, shadow_train_dataset,shadow_holdout_dataset,i)
 # ================================
 # 7. 使用攻击模型对目标模型实施成员推断
 # ================================
