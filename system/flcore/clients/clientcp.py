@@ -7,6 +7,7 @@ from torch.utils.data import DataLoader
 from sklearn.preprocessing import label_binarize
 from sklearn import metrics
 from utils.data_utils import read_client_data
+import os
 
 
 class clientCP:
@@ -23,6 +24,14 @@ class clientCP:
         self.learning_rate = args.local_learning_rate
         self.local_steps = args.local_steps
         self.noise= {}
+        self.grad_records = []
+        result_dir = "gradient_log"
+        os.makedirs(result_dir, exist_ok=True)
+        if args.difference_privacy:
+            filename = f"gradient_log_client{self.id}_{args.dataset}_{args.global_rounds}_{args.local_learning_rate:.4f}_{args.difference_privacy_layer}.txt"
+        else:
+            filename = f"gradient_log_client{self.id}_{args.dataset}_{args.global_rounds}_{args.local_learning_rate:.4f}.txt"
+        self.filepath = os.path.join(result_dir, filename)
 
 
 
@@ -105,6 +114,17 @@ class clientCP:
         for (np, pp), (ng, pg) in zip(self.model.model.head.named_parameters(), self.model.head_g.named_parameters()):
             pg.data = pp*0.5+pg*0.5
 
+    def get_module_grad_norm(self,model) -> float:
+        """
+        计算给定模块的所有参数梯度的 L2 范数并返回。
+        如果某个参数没有梯度（grad=None），则跳过。
+        """
+        total_norm_sq = 0.0
+        for p in model.parameters():
+            if p.grad is not None:
+                param_norm = p.grad.data.norm(2)
+                total_norm_sq += param_norm.item() ** 2
+        return total_norm_sq ** 0.5
     def test_metrics(self):
         testloader = self.load_test_data()
         self.model.eval()
@@ -180,8 +200,25 @@ class clientCP:
                 loss += MMD(rep, rep_base, 'rbf', self.device) * self.lamda
                 self.opt.zero_grad()
                 loss.backward()
-                self.opt.step()
 
+                self.opt.step()
+        grad_norm_head = self.get_module_grad_norm(self.model.model.head)  # global model
+        grad_norm_feat = self.get_module_grad_norm(self.model.model.feature_extractor)
+
+        # 你也可以再加一个 "整体" 的 grad_norm
+        grad_norm_ensemble = self.get_module_grad_norm(self.model)
+
+        # 接下来你可以将这些范数记录到日志、保存到文件、
+        # 或者可视化，比如 print/log/wandb/tensorboard 等
+        record_dict = {
+            "round": round,
+            "grad_norm_head": grad_norm_head,
+            "grad_norm_feat": grad_norm_feat,
+            # "grad_norm_cs": grad_norm_cs,
+            "grad_norm_ensemble": grad_norm_ensemble
+        }
+        with open(self.filepath, "a") as f:
+            f.write(str(record_dict) + "\n")
         # Clip and add noise for DP if enabled
         clip_value = 0.002
         epsilon = 0.5
@@ -227,6 +264,7 @@ class clientCP:
             save_path = os.path.join(save_dir, filename)
             torch.save(self.model.state_dict(), save_path)
             print(f"Model saved to {save_path}")
+
 
 
 def MMD(x, y, kernel, device='cpu'):
